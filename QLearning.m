@@ -1,12 +1,5 @@
 clear all; close all; clc;
 
-%% Create Output Directory
-if ~exist('results', 'dir')
-    mkdir('results');
-end
-
-fprintf('TN-NTN Spectrum Allocation Q-Learning Simulation \n\n');
-
 %  SECTION 1: SYSTEM PARAMETERS
 
 % Network Configuration
@@ -120,7 +113,7 @@ for episode = 1:params.n_episodes
         old_TN_load = TN_loads(action);
         old_NTN_load = NTN_loads(action);
         
-        % Allocate spectrum (simplified allocation logic)
+        % Allocate spectrum 
         if TN_demand > NTN_demand
             TN_loads(action) = min(100, TN_loads(action) + TN_demand * 0.1);
             NTN_loads(action) = max(0, NTN_loads(action) - TN_demand * 0.05);
@@ -176,8 +169,6 @@ fprintf('Training completed!\n');
 
 
 %  SECTION 3: BASELINE ALGORITHM
-
-% Random allocation baseline
 random_rewards = zeros(100, 1);
 random_throughput = zeros(100, 1);
 for trial = 1:100
@@ -263,16 +254,8 @@ fprintf('Testing completed.\n\n');
 
 
 %  SECTION 5: RESULTS
-fprintf('===== PERFORMANCE COMPARISON =====\n');
 fprintf('Q-Learning Average Reward: %.2f ± %.2f\n', mean(test_rewards), std(test_rewards));
-fprintf('Random Average Reward: %.2f ± %.2f\n', mean(random_rewards), std(random_rewards));
-fprintf('\n');
 fprintf('Q-Learning Throughput: %.2f Mbps\n', mean(test_throughput));
-fprintf('Random Throughput: %.2f Mbps\n', mean(random_throughput));
-fprintf('\n');
-fprintf('Improvement over Random: %.1f%%\n', ...
-    (mean(test_throughput) - mean(random_throughput))/mean(random_throughput)*100);
-fprintf('\n');
 
 %  SECTION 6: VISUALIZATION
 % Set default figure properties
@@ -322,76 +305,13 @@ legend('Instantaneous', sprintf('%d-Episode Moving Average', window), 'Location'
 xlim([1 params.n_episodes]);
 ylim([0 1]);
 
+% Ensure directory exists before saving
+if ~exist('results', 'dir'), mkdir('results'); end
 saveas(gcf, 'results/Fig1_Learning_Convergence.png');
 saveas(gcf, 'results/Fig1_Learning_Convergence.fig');
 fprintf('   Figure 1 saved: Learning Convergence\n');
 
-%% FIGURE 2: Performance Comparison (Q-Learning vs Random)
-figure('Position', [100, 100, 900, 500]);
-
-subplot(1,2,1);
-methods = {'Q-Learning', 'Random'};
-rewards_data = [mean(test_rewards), mean(random_rewards)];
-errors = [std(test_rewards), std(random_rewards)];
-bar_handle = bar(rewards_data, 'FaceColor', 'flat');
-bar_handle.CData(1,:) = [0.2 0.4 0.8];
-bar_handle.CData(2,:) = [0.8 0.2 0.2];
-hold on;
-errorbar(1:2, rewards_data, errors, 'k.', 'LineWidth', 1.5, 'MarkerSize', 1);
-set(gca, 'XTickLabel', methods);
-ylabel('Average Reward');
-title('(a) Average Reward Comparison');
-grid on;
-ylim([0 max(rewards_data)*1.3]);
-
-subplot(1,2,2);
-throughput_data = [mean(test_throughput), mean(random_throughput)];
-tp_errors = [std(test_throughput), std(random_throughput)];
-bar_handle2 = bar(throughput_data, 'FaceColor', 'flat');
-bar_handle2.CData(1,:) = [0.2 0.7 0.3];
-bar_handle2.CData(2,:) = [0.8 0.2 0.2];
-hold on;
-errorbar(1:2, throughput_data, tp_errors, 'k.', 'LineWidth', 1.5, 'MarkerSize', 1);
-set(gca, 'XTickLabel', methods);
-ylabel('Throughput (Mbps)');
-title('(b) System Throughput Comparison');
-grid on;
-ylim([0 max(throughput_data)*1.3]);
-
-saveas(gcf, 'results/Fig2_Performance_Comparison.png');
-saveas(gcf, 'results/Fig2_Performance_Comparison.fig');
-fprintf('   Figure 2 saved: Performance Comparison\n');
-
-%% FIGURE 3: Interference Analysis
-figure('Position', [100, 100, 1000, 400]);
-
-subplot(1,2,1);
-time_steps = 1:params.n_steps;
-mean_interference = mean(test_interference, 1);
-std_interference = std(test_interference, 1);
-fill([time_steps, fliplr(time_steps)], ...
-     [mean_interference + std_interference, fliplr(mean_interference - std_interference)], ...
-     [0.8 0.9 1.0], 'EdgeColor', 'none', 'FaceAlpha', 0.5);
-hold on;
-plot(time_steps, mean_interference, 'LineWidth', 2.5, 'Color', [0.2 0.4 0.8]);
-xlabel('Time Step');
-ylabel('Interference Level');
-title('(a) Interference Level Over Time (Q-Learning)');
-grid on;
-xlim([1 params.n_steps]);
-
-subplot(1,2,2);
-histogram(mean(test_interference, 2), 20, 'FaceColor', [0.2 0.7 0.3], 'EdgeColor', 'k');
-xlabel('Average Interference per Episode');
-ylabel('Frequency');
-title('(b) Distribution of Interference Levels');
-grid on;
-
-saveas(gcf, 'results/Fig3_Interference_Analysis.png');
-saveas(gcf, 'results/Fig3_Interference_Analysis.fig');
-fprintf('   Figure 3 saved: Interference Analysis\n');
-
-%% FIGURE 4: Channel Utilization Heatmap
+%% FIGURE 2: Channel Utilization Heatmap
 figure('Position', [100, 100, 900, 500]);
 
 subplot(1,2,1);
@@ -413,15 +333,16 @@ title('(b) Channel Selection Heatmap Across Episodes');
 colormap(jet);
 set(gca, 'YDir', 'normal');
 
-saveas(gcf, 'results/Fig4_Channel_Utilization.png');
-saveas(gcf, 'results/Fig4_Channel_Utilization.fig');
-fprintf('   Figure 4 saved: Channel Utilization\n');
+if ~exist('results', 'dir'), mkdir('results'); end
+saveas(gcf, 'results/Fig2_Channel_Utilization.png');
+saveas(gcf, 'results/Fig2_Channel_Utilization.fig');
+fprintf('   Figure 2 saved: Channel Utilization\n');
 
-%% FIGURE 5: Q-Value Evolution
+%% FIGURE 3: Q-Value Evolution
 figure('Position', [100, 100, 800, 500]);
 
 % Sample Q-values for specific states
-sample_states = [100, 500, 1000, 2000, 3000];
+sample_states = [100, 500, 1000, 2000, 3000, 4000, 5000];
 q_evolution = zeros(length(sample_states), params.n_channels);
 
 for i = 1:length(sample_states)
@@ -440,91 +361,36 @@ colorbar;
 
 subplot(1,2,2);
 max_q_per_state = max(Q_table, [], 2);
-histogram(max_q_per_state, 50, 'FaceColor', [0.7 0.3 0.5], 'EdgeColor', 'k');
-xlabel('Maximum Q-Value');
-ylabel('Number of States');
-title('(b) Distribution of Maximum Q-Values');
-grid on;
 
-saveas(gcf, 'results/Fig5_QValue_Analysis.png');
-saveas(gcf, 'results/Fig5_QValue_Analysis.fig');
-fprintf('   Figure 5 saved: Q-Value Analysis\n');
+% Filter out very small Q-values for better visualization
+threshold = 1e-3; 
+filtered_q_values = max_q_per_state(max_q_per_state > threshold);
 
-%% FIGURE 6: Dynamic Traffic Response
-figure('Position', [100, 100, 1000, 600]);
-
-% Simulate one episode with detailed tracking
-TN_loads_track = zeros(params.n_steps, params.n_channels);
-NTN_loads_track = zeros(params.n_steps, params.n_channels);
-actions_track = zeros(params.n_steps, 1);
-demands_track = zeros(params.n_steps, 2);
-
-TN_loads = rand(1, params.n_channels) * 50;
-NTN_loads = rand(1, params.n_channels) * 50;
-
-for step = 1:params.n_steps
-    time_of_day = mod(floor(step / 25), 4) + 1;
-    traffic_multiplier = 1 + 0.5 * sin(2*pi*step/params.n_steps);
+if ~isempty(filtered_q_values)
+    histogram(filtered_q_values, 50, 'FaceColor', [0.7 0.3 0.5], 'EdgeColor', 'k');
+    xlabel('Maximum Q-Value');
+    ylabel('Number of States');
+    title({'(b) Distribution of Maximum Q-Values', sprintf('(Filtered: Q > %.1e)', threshold)});
+    grid on;
     
-    TN_demand = params.TN_traffic_mean * traffic_multiplier;
-    NTN_demand = params.NTN_traffic_mean * traffic_multiplier;
-    
-    demands_track(step, :) = [TN_demand, NTN_demand];
-    
-    interference = sum(abs(TN_loads - NTN_loads)) / params.n_channels;
-    TN_load_bin = min(ceil(mean(TN_loads) / 10), n_load_bins);
-    NTN_load_bin = min(ceil(mean(NTN_loads) / 10), n_load_bins);
-    interference_bin = min(ceil(interference / 20), n_interference_bins);
-    
-    state_idx = sub2ind([n_load_bins, n_load_bins, n_interference_bins, n_time_bins], ...
-                        TN_load_bin, NTN_load_bin, interference_bin, time_of_day);
-    
-    [~, action] = max(Q_table(state_idx, :));
-    actions_track(step) = action;
-    
-    % Update loads
-    if TN_demand > NTN_demand
-        TN_loads(action) = min(100, TN_loads(action) + TN_demand * 0.1);
-        NTN_loads(action) = max(0, NTN_loads(action) - TN_demand * 0.05);
-    else
-        NTN_loads(action) = min(100, NTN_loads(action) + NTN_demand * 0.1);
-        TN_loads(action) = max(0, TN_loads(action) - NTN_demand * 0.05);
-    end
-    
-    TN_loads_track(step, :) = TN_loads;
-    NTN_loads_track(step, :) = NTN_loads;
+    % Add text annotation with statistics
+    text(0.98, 0.98, sprintf('Total States: %d\nFiltered States: %d\nMean Q: %.2f\nMax Q: %.2f', ...
+        length(max_q_per_state), length(filtered_q_values), ...
+        mean(filtered_q_values), max(filtered_q_values)), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'top', 'BackgroundColor', 'white', ...
+        'EdgeColor', 'black', 'FontSize', 10);
+else
+    % Fallback: show all values with log scale
+    histogram(max_q_per_state(max_q_per_state > 0), 50, 'FaceColor', [0.7 0.3 0.5], 'EdgeColor', 'k');
+    xlabel('Maximum Q-Value');
+    ylabel('Number of States');
+    title('(b) Distribution of Maximum Q-Values');
+    set(gca, 'YScale', 'log');
+    grid on;
 end
 
-subplot(3,1,1);
-plot(1:params.n_steps, demands_track(:,1), 'LineWidth', 2, 'Color', [0.2 0.4 0.8]);
-hold on;
-plot(1:params.n_steps, demands_track(:,2), 'LineWidth', 2, 'Color', [0.8 0.4 0.2]);
-xlabel('Time Step');
-ylabel('Demand (Mbps)');
-title('(a) Dynamic Traffic Demand Pattern');
-legend('TN Demand', 'NTN Demand', 'Location', 'best');
-grid on;
-
-subplot(3,1,2);
-plot(1:params.n_steps, mean(TN_loads_track, 2), 'LineWidth', 2, 'Color', [0.2 0.7 0.3]);
-hold on;
-plot(1:params.n_steps, mean(NTN_loads_track, 2), 'LineWidth', 2, 'Color', [0.7 0.2 0.7]);
-xlabel('Time Step');
-ylabel('Average Load (%)');
-title('(b) Network Load Response');
-legend('TN Load', 'NTN Load', 'Location', 'best');
-grid on;
-
-subplot(3,1,3);
-scatter(1:params.n_steps, actions_track, 30, actions_track, 'filled');
-colorbar;
-xlabel('Time Step');
-ylabel('Selected Channel');
-title('(c) Q-Learning Channel Selection Decisions');
-ylim([0.5 params.n_channels+0.5]);
-colormap(jet);
-grid on;
-
-saveas(gcf, 'results/Fig6_Traffic_Response.png');
-saveas(gcf, 'results/Fig6_Traffic_Response.fig');
-fprintf('   Figure 6 saved: Dynamic Traffic Response\n');
+if ~exist('results', 'dir'), mkdir('results'); end
+saveas(gcf, 'results/Fig3_QValue_Analysis.png');
+saveas(gcf, 'results/Fig3_QValue_Analysis.fig');
+fprintf('   Figure 3 saved: Q-Value Analysis\n');
