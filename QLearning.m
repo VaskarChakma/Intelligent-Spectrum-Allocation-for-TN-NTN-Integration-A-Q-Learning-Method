@@ -59,6 +59,9 @@ episode_rewards = zeros(params.n_episodes, 1);
 episode_throughput = zeros(params.n_episodes, 1);
 episode_fairness = zeros(params.n_episodes, 1);
 convergence_data = zeros(params.n_episodes, 1);
+episode_interference = zeros(params.n_episodes, 1);
+episode_TN_interference = zeros(params.n_episodes, 1);
+episode_NTN_interference = zeros(params.n_episodes, 1);
 
 epsilon = params.epsilon_start;
 
@@ -160,7 +163,9 @@ for episode = 1:params.n_episodes
     episode_throughput(episode) = total_throughput / params.n_steps;
     episode_fairness(episode) = mean(fairness_scores);
     convergence_data(episode) = max(Q_table(:));
-    
+    episode_interference(episode) = mean(sum(abs(TN_loads - NTN_loads)) / params.n_channels);
+    episode_TN_interference(episode) = mean(TN_loads);
+    episode_NTN_interference(episode) = mean(NTN_loads);
     % Decay epsilon
     epsilon = max(params.epsilon_end, epsilon * params.epsilon_decay);
 end
@@ -171,31 +176,34 @@ fprintf('Training completed!\n');
 %  SECTION 3: BASELINE ALGORITHM
 random_rewards = zeros(100, 1);
 random_throughput = zeros(100, 1);
+random_interference = zeros(100, 1);
 for trial = 1:100
-    TN_loads = rand(1, params.n_channels) * 100;
-    NTN_loads = rand(1, params.n_channels) * 100;
+    TN_loads_rand = rand(1, params.n_channels) * 100;
+    NTN_loads_rand = rand(1, params.n_channels) * 100;
     
-    total_r = 0;
-    total_t = 0;
+    total_interference = 0;
     for step = 1:params.n_steps
         action = randi(params.n_channels);
         traffic_mult = 1 + 0.5 * sin(2*pi*step/params.n_steps);
         TN_demand = params.TN_traffic_mean * traffic_mult;
         NTN_demand = params.NTN_traffic_mean * traffic_mult;
         
-        throughput = (TN_demand * (100 - TN_loads(action))/100 + ...
-                     NTN_demand * (100 - NTN_loads(action))/100);
-        interference = sum(abs(TN_loads - NTN_loads)) / params.n_channels;
-        reward = throughput - interference/100;
+        if TN_demand > NTN_demand
+            TN_loads_rand(action) = min(100, TN_loads_rand(action) + TN_demand * 0.1);
+            NTN_loads_rand(action) = max(0, NTN_loads_rand(action) - TN_demand * 0.05);
+        else
+            NTN_loads_rand(action) = min(100, NTN_loads_rand(action) + NTN_demand * 0.1);
+            TN_loads_rand(action) = max(0, TN_loads_rand(action) - NTN_demand * 0.05);
+        end
         
-        total_r = total_r + reward;
-        total_t = total_t + throughput;
+        interference = sum(abs(TN_loads_rand - NTN_loads_rand)) / params.n_channels;
+        total_interference = total_interference + interference;
     end
-    random_rewards(trial) = total_r / params.n_steps;
-    random_throughput(trial) = total_t / params.n_steps;
+    random_interference(trial) = total_interference / params.n_steps;
 end
 
-fprintf('Random baseline computed.\n');
+fprintf('Random baseline interference computed.\n');
+
 
 
 %  SECTION 4: PERFORMANCE EVALUATION
@@ -341,7 +349,6 @@ fprintf('   Figure 2 saved: Channel Utilization\n');
 %% FIGURE 3: Q-Value Evolution
 figure('Position', [100, 100, 800, 500]);
 
-% Sample Q-values for specific states
 sample_states = [100, 500, 1000, 2000, 3000, 4000, 5000];
 q_evolution = zeros(length(sample_states), params.n_channels);
 
@@ -362,7 +369,7 @@ colorbar;
 subplot(1,2,2);
 max_q_per_state = max(Q_table, [], 2);
 
-% Filter out very small Q-values for better visualization
+% Filter out very small Q-values
 threshold = 1e-3; 
 filtered_q_values = max_q_per_state(max_q_per_state > threshold);
 
@@ -373,7 +380,6 @@ if ~isempty(filtered_q_values)
     title({'(b) Distribution of Maximum Q-Values', sprintf('(Filtered: Q > %.1e)', threshold)});
     grid on;
     
-    % Add text annotation with statistics
     text(0.98, 0.98, sprintf('Total States: %d\nFiltered States: %d\nMean Q: %.2f\nMax Q: %.2f', ...
         length(max_q_per_state), length(filtered_q_values), ...
         mean(filtered_q_values), max(filtered_q_values)), ...
@@ -381,7 +387,6 @@ if ~isempty(filtered_q_values)
         'VerticalAlignment', 'top', 'BackgroundColor', 'white', ...
         'EdgeColor', 'black', 'FontSize', 10);
 else
-    % Fallback: show all values with log scale
     histogram(max_q_per_state(max_q_per_state > 0), 50, 'FaceColor', [0.7 0.3 0.5], 'EdgeColor', 'k');
     xlabel('Maximum Q-Value');
     ylabel('Number of States');
@@ -394,3 +399,70 @@ if ~exist('results', 'dir'), mkdir('results'); end
 saveas(gcf, 'results/Fig3_QValue_Analysis.png');
 saveas(gcf, 'results/Fig3_QValue_Analysis.fig');
 fprintf('   Figure 3 saved: Q-Value Analysis\n');
+
+%% Figure 4 Interference Analysis Over Time
+figure('Position', [100, 100, 1000, 700]);
+
+% Subplot 1: TN vs NTN Load Balance
+subplot(2,2,2);
+plot(1:params.n_episodes, movmean(episode_TN_interference, window), 'LineWidth', 2.5, 'Color', [0.2 0.6 0.8], 'DisplayName', 'TN Load');
+hold on;
+plot(1:params.n_episodes, movmean(episode_NTN_interference, window), 'LineWidth', 2.5, 'Color', [0.8 0.4 0.2], 'DisplayName', 'NTN Load');
+grid on;
+xlabel('Training Episode');
+ylabel('Average Load (%)');
+title('(b) TN and NTN Load Convergence');
+legend('Location', 'best');
+xlim([1 params.n_episodes]);
+
+% Subplot 2: Interference Comparison (Box Plot)
+subplot(2,2,3);
+% Use TEST interference for fair comparison
+mean_test_interference = mean(test_interference, 2);
+
+data_to_plot = [random_interference; mean_test_interference];
+group = [ones(length(random_interference), 1); 2*ones(length(mean_test_interference), 1)];
+
+boxplot(data_to_plot, group, 'Labels', {'Random Allocation', 'Q-Learning (Test)'}, 'Colors', [0.8 0.3 0.3; 0.2 0.6 0.3]);
+ylabel('Interference Level');
+title('(c) Interference Comparison: Random vs Q-Learning');
+grid on;
+
+% Calculate improvement percentage using TEST data
+improvement = ((mean(random_interference) - mean(mean_test_interference)) / mean(random_interference)) * 100;
+
+% Add text showing statistics
+text(0.5, 0.98, sprintf('Random: %.1f±%.1f\nQ-Learning: %.1f±%.1f\nImprovement: %.1f%%', ...
+    mean(random_interference), std(random_interference), ...
+    mean(mean_test_interference), std(mean_test_interference), improvement), ...
+    'Units', 'normalized', 'HorizontalAlignment', 'center', ...
+    'VerticalAlignment', 'top', 'BackgroundColor', 'white', ...
+    'EdgeColor', 'black', 'FontSize', 10);
+
+% Subplot 3: Interference During Test Episodes
+subplot(2,2,4);
+plot(1:test_episodes, mean_test_interference, 'o-', 'LineWidth', 2, 'MarkerSize', 6, 'Color', [0.3 0.7 0.4]);
+hold on;
+yline(mean(random_interference), '--k', 'LineWidth', 2, 'DisplayName', 'Random Baseline');
+yline(mean(mean_test_interference), '-.r', 'LineWidth', 2, 'DisplayName', 'Q-Learning Mean');
+grid on;
+xlabel('Test Episode');
+ylabel('Average Interference Level');
+title(sprintf('(d) Test Performance (%.1f%% Improvement)', improvement));
+legend('Q-Learning Test', 'Random Baseline', 'Q-Learning Mean', 'Location', 'best');
+xlim([1 test_episodes]);
+
+% Save the figure
+if ~exist('results', 'dir'), mkdir('results'); end
+saveas(gcf, 'results/Fig_Interference_Analysis.png');
+saveas(gcf, 'results/Fig_Interference_Analysis.fig');
+fprintf('   NEW Figure saved: Interference Analysis\n');
+
+% Print statistics
+fprintf('\n ----INTERFERENCE ANALYSIS RESULTS ---- \n');
+fprintf('Random Allocation - Mean Interference: %.2f ± %.2f\n', mean(random_interference), std(random_interference));
+fprintf('Q-Learning (Test) - Mean Interference: %.2f ± %.2f\n', mean(mean_test_interference), std(mean_test_interference));
+fprintf('Improvement over Random: %.2f%%\n', improvement);
+fprintf('Variance Reduction: %.2f%% (Random: %.2f, Q-Learning: %.2f)\n', ...
+    (1 - std(mean_test_interference)/std(random_interference))*100, ...
+    std(random_interference), std(mean_test_interference));
